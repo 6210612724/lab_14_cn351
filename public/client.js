@@ -22,8 +22,32 @@ function post(uri, body, errorElement, successCallback) {
     httpReq.send(body);
 }
 
+function get(uri, errorElement, successCallback) {
+    const httpReq = new XMLHttpRequest();
+    httpReq.onreadystatechange = function () {
+        if (this.readyState === 4 && this.status === 200) {
+            if (successCallback) {
+                successCallback(JSON.parse(this.responseText));
+            }
+        } else if (this.readyState === 4) {
+            if (errorElement) {
+                document.getElementById(errorElement).innerHTML = `Server responded with error code ${this.status}`;
+            }
+        }
+    };
+    httpReq.open('GET', uri, true);
+    const token = sessionStorage.getItem('token');
+    if (token) {
+        httpReq.setRequestHeader('Authorization', `Bearer ${token}`)
+    }
+    httpReq.send();
+}
+
+
 window.onload = function () {
+
     changeRoute('/login');
+
     document.getElementById('login-button').addEventListener('click', function () {
         const username = document.getElementById('username').value
         const password = document.getElementById('password').value
@@ -34,7 +58,23 @@ window.onload = function () {
             changeRoute('/secret');
         });
     });
+
+    document.getElementById('logout-button').addEventListener('click', function () {
+        sessionStorage.clear();
+        changeRoute('/login');
+    });
+
+    document.getElementById('fetch-secret-button').addEventListener('click', function () {
+        document.getElementById('error').innerHTML = '';
+        document.getElementById('secret').innerHTML = '';
+        get('/secret', 'error', function (response) {
+            document.getElementById('secret').innerHTML = response.secret;
+        });
+    });
+
 }
+
+
 
 function displayLogin() {
     document.getElementById('login-error').innerHTML = '';
@@ -69,3 +109,5 @@ function changeRoute(uri) {
     }
     currentRoute = uri;
 }
+
+
