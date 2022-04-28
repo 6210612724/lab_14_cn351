@@ -4,6 +4,11 @@ window.addEventListener('popstate', function (event) {
     changeRoute(event.state);
 });
 
+function getCookieValue(name) {
+    const val = document.cookie.match('(^|[^;]+)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return val ? val.pop() : '';
+}
+
 function post(uri, body, errorElement, successCallback) {
     const httpReq = new XMLHttpRequest();
     httpReq.onreadystatechange = function () {
@@ -19,6 +24,7 @@ function post(uri, body, errorElement, successCallback) {
     };
     httpReq.open('POST', uri, true);
     httpReq.setRequestHeader('Content-Type', 'application/json');
+    httpReq.setRequestHeader('X-XSRF-TOKEN', getCookieValue('XSRF-TOKEN'));
     httpReq.send(body);
 }
 
@@ -35,7 +41,7 @@ function get(uri, errorElement, successCallback) {
             }
         }
     };
-    httpReq.open('GET', uri, true);   
+    httpReq.open('GET', uri, true);
     httpReq.send();
 }
 
@@ -49,7 +55,7 @@ window.onload = function () {
         const password = document.getElementById('password').value
         const body = JSON.stringify({ username: username, password: password });
         post('/login', body, 'login-error', function (res) {
-            sessionStorage.setItem('username', res.username);            
+            sessionStorage.setItem('username', res.username);
             changeRoute('/secret');
         });
     });
@@ -106,4 +112,31 @@ function changeRoute(uri) {
     currentRoute = uri;
 }
 
+function checkToken(req, res, next) {
+    if (req.headers && req.headers.authorization) {
+        const headerValues = req.headers.authorization.split(' ');
+        if (headerValues.length === 2) {
+            const token = headerValues[1];
+            jwt.verify(token, jwtPublicKey, function (error, payload) {
+                if (error) {
+                    console.log('Error decoding JWT:', error);
+                    res.sendStatus(403);
+                } else {
+                    const dateNow = Date.now();
+                    if (dateNow < payload.exp) {
+                        // You might want to regenerate the token with a fresh expiration here.
+                        console.log('Verified JWT for user', payload.username);
+                        req.username = payload.username;
+                        next();
+                    } else {
+                        console.log('Expired token for user', payload.username);
+                        res.sendStatus(403);
+                    }
+                }
+            });
+            return;
+        }
+    }
+    res.sendStatus(403);
+}
 
