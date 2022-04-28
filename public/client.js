@@ -35,11 +35,7 @@ function get(uri, errorElement, successCallback) {
             }
         }
     };
-    httpReq.open('GET', uri, true);
-    const token = sessionStorage.getItem('token');
-    if (token) {
-        httpReq.setRequestHeader('Authorization', `Bearer ${token}`)
-    }
+    httpReq.open('GET', uri, true);   
     httpReq.send();
 }
 
@@ -53,14 +49,14 @@ window.onload = function () {
         const password = document.getElementById('password').value
         const body = JSON.stringify({ username: username, password: password });
         post('/login', body, 'login-error', function (res) {
-            sessionStorage.setItem('username', res.username);
-            sessionStorage.setItem('token', res.token);
+            sessionStorage.setItem('username', res.username);            
             changeRoute('/secret');
         });
     });
 
     document.getElementById('logout-button').addEventListener('click', function () {
         sessionStorage.clear();
+        post('/logout', null, 'error', null);
         changeRoute('/login');
     });
 

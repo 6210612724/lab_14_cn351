@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
+const cookieParser = require('cookie-parser');
 
 const users = [{ username: 'foouser', password: '111', passwordHash: '' }];
 users.forEach(function (userObj) {
@@ -33,36 +34,37 @@ try {
 
 
 function generateJwt(username) {
-    return jwt.sign({
-        username: username,
-        exp: new Date().valueOf() + (1000 * 60 * 60 * 6) // 6 hours
-    }, jwtPrivateKey, { algorithm: 'RS256' });
+    const expires = new Date().valueOf() + (1000 * 60 * 60 * 6) // 6 hours
+    return {
+        token: jwt.sign({
+            username: username,
+            exp: expires,
+        }, jwtPrivateKey, { algorithm: 'RS256' }),
+        expires: expires
+    };
 }
 
 function checkToken(req, res, next) {
-    if (req.headers && req.headers.authorization) {
-        const headerValues = req.headers.authorization.split(' ');
-        if (headerValues.length === 2) {
-            const token = headerValues[1];
-            jwt.verify(token, jwtPublicKey, function (error, payload) {
-                if (error) {
-                    console.log('Error decoding JWT:', error);
-                    res.sendStatus(403);
+    if (req.cookies && req.cookies.authToken) {
+        const token = req.cookies.authToken;
+        jwt.verify(token, jwtPublicKey, function (error, payload) {
+            if (error) {
+                console.log('Error decoding JWT:', error);
+                res.sendStatus(403);
+            } else {
+                const dateNow = Date.now();
+                if (dateNow < payload.exp) {
+                    // You might want to regenerate the token with a fresh expiration here.
+                    console.log('Verified JWT for user', payload.username);
+                    req.username = payload.username;
+                    next();
                 } else {
-                    const dateNow = Date.now();
-                    if (dateNow < payload.exp) {
-                        // You might want to regenerate the token with a fresh expiration here.
-                        console.log('Verified JWT for user', payload.username);
-                        req.username = payload.username;
-                        next();
-                    } else {
-                        console.log('Expired token for user', payload.username);
-                        res.sendStatus(403);
-                    }
+                    console.log('Expired token for user', payload.username);
+                    res.sendStatus(403);
                 }
-            });
-            return;
-        }
+            }
+        });
+        return;
     }
     res.sendStatus(403);
 }
@@ -90,10 +92,9 @@ app.post('/login', function (req, res) {
             argon2.verify(userObj.passwordHash, req.body.password).then((success) => {
                 if (success) {
                     console.log('Successful hash verification');
-                    res.send({
-                        username: userObj.username,
-                        token: generateJwt(userObj.username)
-                    });
+                    const tokenObj = generateJwt(userObj.username);
+                    res.cookie('authToken', tokenObj.token, { httpOnly: true, expires: new Date(tokenObj.expires) });
+                    res.send({ username: userObj.username });
                 } else {
                     console.log('Bad password for user', userObj.username);
                     res.sendStatus(400);
@@ -105,6 +106,16 @@ app.post('/login', function (req, res) {
         }
     } else {
         console.log('Got POST /login without username and password in body');
+        res.sendStatus(400);
+    }
+});
+
+app.post('/logout', function (req, res) {
+    if (req.cookies && req.cookies.authToken) {
+        const expiration = Date.now() - 60 * 60 * 1000;
+        res.cookie('authToken', req.cookies.authToken, { httpOnly: true, expires: new Date(expiration) });
+        res.sendStatus(200);
+    } else {
         res.sendStatus(400);
     }
 });
